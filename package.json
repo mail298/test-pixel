@@ -1,0 +1,14 @@
+{
+  "name": "pixel-dungeon",
+  "version": "1.0.0",
+  "description": "A simple pixel-art dungeon crawler",
+  "type": "module",
+  "scripts": {
+    "dev": "npx serve .",
+    "start": "npx serve .",
+    "build": "echo 'Static site - no build needed'"
+  },
+  "devDependencies": {
+    "serve": "^14.2.0"
+  }
+}
