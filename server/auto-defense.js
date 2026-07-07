@@ -133,9 +133,9 @@ function checkPortScans() {
 }
 
 function checkResources() {
-  const cpus = cpus();
+  const cpuInfo = cpus();
   const load1 = loadavg()[0];
-  const cpuPct = Math.round((load1 / cpus.length) * 100);
+  const cpuPct = Math.round((load1 / cpuInfo.length) * 100);
   const memFree = freemem();
   const memTotal = totalmem();
   const memPct = Math.round(((memTotal - memFree) / memTotal) * 100);
@@ -147,7 +147,7 @@ function checkResources() {
     if (pct) diskPct = parseInt(pct);
   } catch {}
 
-  return { cpuPct, memPct, diskPct, load1, cpus: cpus.length };
+  return { cpuPct, memPct, diskPct, load1, cores: cpuInfo.length };
 }
 
 async function blockIp(ip, reason) {
