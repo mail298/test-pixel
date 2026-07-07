@@ -53,6 +53,8 @@ h1 span{color:#22c55e;font-size:12px;background:#1e293b;padding:4px 10px;border-
   <div class="card"><h2>🔌 Services</h2><div id="services"></div></div>
   <div class="card"><h2>📋 Top Processes</h2><div class="process-list" id="top-procs"></div></div>
   <div class="card"><h2>⚙️ System Info</h2><div id="sysinfo" style="font-size:12px;line-height:1.8"></div></div>
+  <div class="card" style="grid-column:1/-1"><h2>🛡️ Auto Defense System</h2><div id="defense-status" style="font-size:12px"></div></div>
+  <div class="card" style="grid-column:1/-1"><h2>🚨 Attack Log</h2><div id="attack-log" style="font-size:11px;line-height:1.6;max-height:200px;overflow-y:auto"></div></div>
   <div class="card"><h2>🛡️ Security</h2><div id="security" style="font-size:12px;line-height:1.8"></div></div>
 </div>
 
@@ -170,9 +172,50 @@ function formatBytes(b) {
   return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
 }
 
-// Auto refresh every 5 seconds
+async function fetchDefense() {
+  try {
+    const r = await fetch('http://localhost:3456/api/defense-status');
+    if (!r.ok) throw Error();
+    const d = await r.json();
+    const status = document.getElementById('defense-status');
+    const mode = d.status === 'active' ? '<span style="color:#ef4444;font-weight:bold">● ACTIVE</span>' : '<span style="color:#22c55e">○ PASSIVE</span>';
+    status.innerHTML = `
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px">
+        <span>Mode: ${mode}</span>
+        <span>Attacks handled: <strong style="color:#f59e0b">${d.attackCount}</strong></span>
+        <span>IPs blocked: <strong style="color:#ef4444">${d.blockedIps.length}</strong></span>
+      </div>
+      <div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+        <span>CPU: ${d.resources.cpuPct}%</span>
+        <span>MEM: ${d.resources.memPct}%</span>
+        <span>DISK: ${d.resources.diskPct}%</span>
+        <span>Load: ${d.resources.load1?.toFixed(2)}</span>
+      </div>
+      ${d.suspiciousIps.length ? '<div style="color:#f59e0b">Suspicious: ' + d.suspiciousIps.map(s => s.ip + '(' + s.count + ')').join(', ') + '</div>' : ''}
+    `;
+    const log = document.getElementById('attack-log');
+    if (d.alerts.length) {
+      log.innerHTML = d.alerts.map(a =>
+        `<div style="display:flex;gap:8px;padding:2px 0;border-bottom:1px solid #1e293b">
+          <span style="color:#475569">${new Date(a.time).toLocaleTimeString()}</span>
+          <span style="color:#ef4444">BLOCKED</span>
+          <span style="color:#94a3b8">${a.ip}</span>
+          <span style="color:#64748b">${a.reason}</span>
+        </div>`
+      ).join('');
+    } else {
+      log.innerHTML = '<div style="color:#22c55e">✅ No threats detected — system secure</div>';
+    }
+  } catch {
+    document.getElementById('defense-status').innerHTML = '<div style="color:#475569">Defense system offline — run "npm run defense"</div>';
+    document.getElementById('attack-log').innerHTML = '<div style="color:#475569">Waiting for defense system...</div>';
+  }
+}
+
 fetchStats();
+fetchDefense();
 setInterval(fetchStats, 5000);
+setInterval(fetchDefense, 3000);
 </script>
 </body>
 </html>
