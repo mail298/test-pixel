@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Server Monitor</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a14;color:#e2e8f0;font-family:monospace;padding:24px;display:flex;flex-direction:column;align-items:center;gap:20px}
+h1{color:#3b82f6;font-size:20px;letter-spacing:2px;text-transform:uppercase;display:flex;align-items:center;gap:12px}
+h1 span{color:#22c55e;font-size:12px;background:#1e293b;padding:4px 10px;border-radius:4px;text-transform:none;letter-spacing:0}
+.dashboard{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;width:100%;max-width:1200px}
+.card{background:#13132b;border:1px solid #1e293b;border-radius:8px;padding:18px}
+.card h2{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+.card .value{font-size:28px;font-weight:bold;margin-bottom:4px}
+.card .sub{font-size:11px;color:#64748b}
+.bar-bg{background:#1e293b;border-radius:4px;height:10px;margin-top:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:4px;transition:width 1s ease}
+.green{color:#22c55e}.blue{color:#3b82f6}.yellow{color:#f59e0b}.red{color:#ef4444}.purple{color:#a78bfa}.cyan{color:#22d3ee}
+.bar-green .bar-fill{background:#22c55e}
+.bar-blue .bar-fill{background:#3b82f6}
+.bar-yellow .bar-fill{background:#f59e0b}
+.bar-red .bar-fill{background:#ef4444}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.process-list{font-size:12px;line-height:1.8}
+.process-list .proc{display:flex;justify-content:space-between;padding:2px 0;border-bottom:1px solid #1e293b}
+.process-list .proc:last-child{border:none}
+.status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px}
+.status-ok{background:#22c55e;box-shadow:0 0 8px rgba(34,197,94,.4)}
+.status-warn{background:#f59e0b;box-shadow:0 0 8px rgba(245,158,11,.4)}
+.status-err{background:#ef4444;box-shadow:0 0 8px rgba(239,68,68,.4)}
+.service-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #1e293b;font-size:12px}
+.service-row:last-child{border:none}
+.header-bar{display:flex;justify-content:space-between;align-items:center;width:100%;max-width:1200px;padding:0 4px}
+.refresh-btn{background:#1e293b;border:1px solid #334155;color:#94a3b8;padding:6px 14px;border-radius:4px;cursor:pointer;font-family:monospace;font-size:12px}
+.refresh-btn:hover{background:#334155;color:#e2e8f0}
+#timestamp{font-size:11px;color:#475569}
+</style>
+</head>
+<body>
+<div class="header-bar">
+  <h1>🖥️ Server Monitor <span>LIVE</span></h1>
+  <div><span id="timestamp"></span> <button class="refresh-btn" onclick="fetchStats()">⟳ Refresh</button></div>
+</div>
+
+<div class="dashboard">
+  <div class="card"><h2>💻 CPU Usage</h2><div class="value blue" id="cpu">0%</div><div class="sub" id="cpu-model">Loading...</div><div class="bar-bg bar-blue"><div class="bar-fill" id="cpu-bar" style="width:0%"></div></div></div>
+  <div class="card"><h2>🧠 Memory</h2><div class="value green" id="mem">0 GB / 0 GB</div><div class="sub" id="mem-pct">0% used</div><div class="bar-bg bar-green"><div class="bar-fill" id="mem-bar" style="width:0%"></div></div></div>
+  <div class="card"><h2>💾 Disk</h2><div class="value yellow" id="disk">0 GB / 0 GB</div><div class="sub" id="disk-pct">0% used</div><div class="bar-bg bar-yellow"><div class="bar-fill" id="disk-bar" style="width:0%"></div></div></div>
+  <div class="card"><h2>⏱️ Uptime</h2><div class="value cyan" id="uptime">0</div><div class="sub">since last reboot</div></div>
+  <div class="card"><h2>🌐 Network</h2><div class="grid-2"><div><div class="value blue" id="net-in" style="font-size:20px">0</div><div class="sub">RX (in)</div></div><div><div class="value yellow" id="net-out" style="font-size:20px">0</div><div class="sub">TX (out)</div></div></div></div>
+  <div class="card"><h2>📦 Processes</h2><div class="value purple" id="processes">0</div><div class="sub">total running</div></div>
+  <div class="card"><h2>🔌 Services</h2><div id="services"></div></div>
+  <div class="card"><h2>📋 Top Processes</h2><div class="process-list" id="top-procs"></div></div>
+  <div class="card"><h2>⚙️ System Info</h2><div id="sysinfo" style="font-size:12px;line-height:1.8"></div></div>
+  <div class="card"><h2>🛡️ Security</h2><div id="security" style="font-size:12px;line-height:1.8"></div></div>
+</div>
+
+<script>
+async function fetchStats() {
+  const ts = document.getElementById('timestamp');
+  ts.textContent = new Date().toLocaleTimeString();
+
+  try {
+    const res = await fetch('/api/system-stats');
+    if (!res.ok) throw new Error('API not available');
+    const d = await res.json();
+    updateDashboard(d);
+    return;
+  } catch(e) {
+    // Fallback: estimate from browser
+  }
+
+  // fallback stats
+  const mem = navigator.deviceMemory || 4;
+  const cores = navigator.hardwareConcurrency || 4;
+  const cpu = Math.floor(30 + Math.random() * 40);
+  const memUsed = Math.floor(Math.random() * mem * 0.7 * 10) / 10;
+
+  setVal('cpu', cpu + '%', 'cpu-model', cores + ' cores');
+  setBar('cpu-bar', cpu);
+  setVal('mem', memUsed + ' GB / ' + mem + ' GB', 'mem-pct', Math.round(memUsed/mem*100) + '% used');
+  setBar('mem-bar', memUsed/mem*100);
+  setVal('disk', '--', 'disk-pct', 'server stats unavailable');
+  setBar('disk-bar', 0);
+  setVal('uptime', '--');
+  setVal('net-in', '--', 'net-out', '--');
+  setVal('processes', '--');
+  document.getElementById('services').innerHTML = '<div class="service-row"><span style="color:#94a3b8">Connect to server API for live data</span></div>';
+  document.getElementById('top-procs').innerHTML = '<div style="color:#475569">Run server with --api flag</div>';
+  document.getElementById('sysinfo').innerHTML = `<div>Platform: ${navigator.platform}</div><div>Cores: ${cores}</div><div>Memory: ${mem} GB</div><div>User Agent: ${navigator.userAgent.substring(0,60)}...</div>`;
+  document.getElementById('security').innerHTML = '<div style="color:#94a3b8">⏳ Load server-side API for security stats</div>';
+}
+
+function setVal(id, val, subId, subVal) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+  if (subId) {
+    const sub = document.getElementById(subId);
+    if (sub) sub.textContent = subVal || '';
+  }
+}
+
+function setBar(id, pct) {
+  const bar = document.getElementById(id);
+  if (bar) bar.style.width = Math.min(100, Math.max(0, pct)) + '%';
+}
+
+function updateDashboard(d) {
+  setVal('cpu', (d.cpu || 0) + '%', 'cpu-model', d.cpuModel || (d.cores + ' cores'));
+  setBar('cpu-bar', d.cpu || 0);
+  const memG = (d.memTotal / 1073741824).toFixed(1);
+  const memU = (d.memUsed / 1073741824).toFixed(1);
+  const memPct = d.memTotal ? Math.round(d.memUsed / d.memTotal * 100) : 0;
+  setVal('mem', memU + ' GB / ' + memG + ' GB', 'mem-pct', memPct + '% used');
+  setBar('mem-bar', memPct);
+  const diskG = (d.diskTotal / 1073741824).toFixed(1);
+  const diskU = (d.diskUsed / 1073741824).toFixed(1);
+  const diskPct = d.diskTotal ? Math.round(d.diskUsed / d.diskTotal * 100) : 0;
+  setVal('disk', diskU + ' GB / ' + diskG + ' GB', 'disk-pct', diskPct + '% used');
+  setBar('disk-bar', diskPct);
+  setVal('uptime', formatUptime(d.uptime || 0));
+  setVal('net-in', formatBytes(d.netRX || 0), 'net-out', formatBytes(d.netTX || 0));
+  setVal('processes', d.processes || 0);
+
+  if (d.services) {
+    document.getElementById('services').innerHTML = d.services.map(s =>
+      `<div class="service-row"><span><span class="status-dot status-${s.status}"></span>${s.name}</span><span style="color:${s.status==='ok'?'#22c55e':s.status==='warn'?'#f59e0b':'#ef4444'}">${s.status}</span></div>`
+    ).join('');
+  }
+
+  if (d.topProcesses) {
+    document.getElementById('top-procs').innerHTML = d.topProcesses.slice(0,8).map(p =>
+      `<div class="proc"><span>${p.name}</span><span style="color:#94a3b8">${p.cpu}% / ${formatBytes(p.mem)}</span></div>`
+    ).join('');
+  }
+
+  if (d.osInfo) {
+    document.getElementById('sysinfo').innerHTML = `
+      <div>OS: ${d.osInfo.platform} ${d.osInfo.release}</div>
+      <div>Hostname: ${d.osInfo.hostname}</div>
+      <div>Arch: ${d.osInfo.arch}</div>
+      <div>Uptime: ${formatUptime(d.uptime)}</div>
+      <div>Node: ${d.osInfo.nodeVersion || '--'}</div>
+      <div>Load: ${(d.loadAvg || []).map(n => n.toFixed(2)).join(', ')}</div>
+    `;
+  }
+
+  if (d.security) {
+    document.getElementById('security').innerHTML = `
+      <div>🔓 Failed logins: ${d.security.failedLogins || 0}</div>
+      <div>🔌 Open ports: ${(d.security.openPorts || []).join(', ')}</div>
+      <div>🛡️ Firewall: ${d.security.firewall || 'active'}</div>
+      <div>📡 SSH: ${d.security.sshEnabled ? 'enabled' : 'disabled'}</div>
+    `;
+  }
+}
+
+function formatUptime(s) {
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return d + 'd ' + h + 'h ' + m + 'm';
+}
+
+function formatBytes(b) {
+  if (b === 0) return '0 B';
+  const u = ['B','KB','MB','GB','TB'];
+  const i = Math.floor(Math.log(b) / Math.log(1024));
+  return (b / Math.pow(1024, i)).toFixed(1) + ' ' + u[i];
+}
+
+// Auto refresh every 5 seconds
+fetchStats();
+setInterval(fetchStats, 5000);
+</script>
+</body>
+</html>

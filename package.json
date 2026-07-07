@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "npx serve .",
     "start": "npx serve .",
+    "monitor": "node server/api.js",
     "build": "echo 'Static site - no build needed'"
   },
   "devDependencies": {
